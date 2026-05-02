@@ -1,0 +1,74 @@
+[
+  {
+    "name": "New York Times",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "Fox News",
+    "link": "https://feeds.foxnews.com/foxnews/latest",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "Washington Post",
+    "link": "http://feeds.washingtonpost.com/rss/world",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "Scmp",
+    "link": "https://www.scmp.com/rss/91/feed",
+    "originCountry": "Hong Kong",
+    "category": "General"
+  },
+  {
+    "name": "Bloomberg: Politics",
+    "link": "https://feeds.bloomberg.com/politics/news.rss",
+    "originCountry": "United States",
+    "category": "Politics"
+  },
+  {
+    "name": "CNN",
+    "link": "http://rss.cnn.com/rss/edition.rss",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "BBC",
+    "link": "http://feeds.bbci.co.uk/news/world/rss.xml",
+    "originCountry": "United Kingdom",
+    "category": "General"
+  },
+  {
+    "name": "The Guardian",
+    "link": "https://www.theguardian.com/world/rss",
+    "originCountry": "United Kingdom",
+    "category": "General"
+  },
+  {
+    "name": "Al Jazeera",
+    "link": "https://www.aljazeera.com/xml/rss/all.xml",
+    "originCountry": "Qatar",
+    "category": "General"
+  },
+  {
+    "name": "The Economist",
+    "link": "https://www.economist.com/the-world-this-week/rss.xml",
+    "originCountry": "United Kingdom",
+    "category": "General"
+  },
+  {
+    "name": "NPR",
+    "link": "https://www.npr.org/rss/rss.php?id=1001",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "Global news",
+    "link": "https://globalnews.ca/world/feed/",
+    "originCountry": "Canada",
+    "category": "General"
+  }
+]
