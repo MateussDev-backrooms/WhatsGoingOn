@@ -54,12 +54,6 @@
     "category": "General"
   },
   {
-    "name": "The Economist",
-    "link": "https://www.economist.com/the-world-this-week/rss.xml",
-    "originCountry": "United Kingdom",
-    "category": "General"
-  },
-  {
     "name": "NPR",
     "link": "https://www.npr.org/rss/rss.php?id=1001",
     "originCountry": "United States",
@@ -69,6 +63,120 @@
     "name": "Global news",
     "link": "https://globalnews.ca/world/feed/",
     "originCountry": "Canada",
+    "category": "General"
+  },
+  {
+    "name": "Bloomberg: Technology",
+    "link": "https://feeds.bloomberg.com/technology/news.rss",
+    "originCountry": "United States",
+    "category": "Technology"
+  },
+  {
+    "name": "The Verge",
+    "link": "https://www.theverge.com/rss/index.xml",
+    "originCountry": "United States",
+    "category": "Technology"
+  },
+  {
+    "name": "TechCrunch",
+    "link": "http://feeds.feedburner.com/TechCrunch/",
+    "originCountry": "United States",
+    "category": "Technology"
+  },
+  {
+    "name": "Engadget",
+    "link": "https://www.engadget.com/rss.xml",
+    "originCountry": "United States",
+    "category": "Technology"
+  },
+  {
+    "name": "Ars Technica",
+    "link": "http://feeds.arstechnica.com/arstechnica/index",
+    "originCountry": "United States",
+    "category": "Technology"
+  },
+  {
+    "name": "Bloomberg: Economics",
+    "link": "https://feeds.bloomberg.com/economics/news.rss",
+    "originCountry": "United States",
+    "category": "Economics"
+  },
+  {
+    "name": "Financial Times",
+    "link": "https://www.ft.com/?format=rss",
+    "originCountry": "United Kingdom",
+    "category": "Economics"
+  },
+  {
+    "name": "NYT: Business",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml",
+    "originCountry": "United States",
+    "category": "Economics"
+  },
+  {
+    "name": "NYT: Economy",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/Economy.xml",
+    "originCountry": "United States",
+    "category": "Economics"
+  },
+  {
+    "name": "NYT: Technology",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+    "originCountry": "United States",
+    "category": "Technology"
+  },
+  {
+    "name": "NYT: Sports",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/Sports.xml",
+    "originCountry": "United States",
+    "category": "Sports"
+  },
+  {
+    "name": "BBC: Sports",
+    "link": "http://feeds.bbci.co.uk/sport/rss.xml?edition=uk",
+    "originCountry": "United Kingdom",
+    "category": "Sports"
+  },
+  {
+    "name": "NYT: Science",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/Science.xml",
+    "originCountry": "United States",
+    "category": "Science"
+  },
+  {
+    "name": "NYT: Environment",
+    "link": "https://rss.nytimes.com/services/xml/rss/nyt/Climate.xml",
+    "originCountry": "United States",
+    "category": "Climate"
+  },
+  {
+    "name": "Guardian: Environment",
+    "link": "https://www.theguardian.com/environment/rss",
+    "originCountry": "United Kingdom",
+    "category": "Climate"
+  },
+  {
+    "name": "BBC: Environment",
+    "link": "http://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+    "originCountry": "United Kingdom",
+    "category": "Climate"
+  },
+  {
+    "name": "Der Spiegel",
+    "link": "https://www.spiegel.de/international/index.rss",
+    "originCountry": "Germany",
+    "category": "General"
+  },
+  {
+    "name": "Le Monde",
+    "link": "https://www.lemonde.fr/rss/une.xml",
+    "originCountry": "France",
+    "category": "General"
+  },
+  {
+    "name": "France 24",
+    "link": "https://www.france24.com/en/rss",
+    "originCountry": "France",
     "category": "General"
   }
 ]
