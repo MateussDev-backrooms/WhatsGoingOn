@@ -169,14 +169,32 @@
   },
   {
     "name": "Le Monde",
-    "link": "https://www.lemonde.fr/rss/une.xml",
+    "link": "https://www.lemonde.fr/en/international/rss_full.xml",
     "originCountry": "France",
     "category": "General"
   },
   {
-    "name": "France 24",
-    "link": "https://www.france24.com/en/rss",
+    "name": "Le Monde: Environment",
+    "link": "https://www.lemonde.fr/en/environment/rss_full.xml",
     "originCountry": "France",
-    "category": "General"
+    "category": "Climate"
+  },
+  {
+    "name": "Le Monde: Economy",
+    "link": "https://www.lemonde.fr/en/economy/rss_full.xml",
+    "originCountry": "France",
+    "category": "Economics"
+  },
+  {
+    "name": "Le Monde: Science",
+    "link": "https://www.lemonde.fr/en/science/rss_full.xml",
+    "originCountry": "France",
+    "category": "Science"
+  },
+  {
+    "name": "Le Monde: Pixels",
+    "link": "https://www.lemonde.fr/en/pixels/rss_full.xml",
+    "originCountry": "France",
+    "category": "Technology"
   }
 ]

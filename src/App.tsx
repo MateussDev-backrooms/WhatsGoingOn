@@ -340,7 +340,7 @@ function App() {
     fetchAllFeeds();
   }, []);
 
-  console.log(geomarkedArticles);
+  // console.log(geomarkedArticles);
 
   // Group geomarked articles by location
   const locationGroups = geomarkedArticles.sort((a, b) => b.article.pubDate.localeCompare(a.article.pubDate)).reduce(
@@ -386,6 +386,7 @@ function App() {
     targetPosition: [number, number];
   } | null>(null);
   const [radarPath, setRadarPath] = useState<string | null>(null);
+  const [currentZoom, setCurrentZoom] = useState(INITIAL_VIEW_STATE.zoom);
 
   const groupedMarkers = Object.values(locationGroups);
 
@@ -417,6 +418,9 @@ function App() {
     });
   }, []);
 
+
+  let radarOpacity = Math.max(0.0, Math.min(0.75, 0.1 + (currentZoom - 1) * 0.08));
+
   const countryArticleCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const article of geomarkedArticles) {
@@ -438,7 +442,13 @@ function App() {
     [countryArticleCounts]
   );
 
-  const countryLayer = useMemo(() => new GeoJsonLayer({
+  const countryLayer = useMemo(() => {
+    const active = allCategories.filter(c => activeCategories.has(c));
+    let activeColor = DEFAULT_COLORS;
+    if (active.length === 1) {
+      activeColor = CATEGORY_COLORS[active[0]] ?? DEFAULT_COLORS;
+    }
+    return new GeoJsonLayer({
     id: 'country-outlines',
     data: countryGeo as unknown as FeatureCollection,
     stroked: true,
@@ -448,14 +458,14 @@ function App() {
       const count = countryArticleCounts[code] ?? 0;
       if (count === 0) return [255, 255, 255, 0]; // invisible
       const opacity = Math.min(30 + (count)*5, 210);
-      return [244, 216, 116, opacity]; // your yellow #F4D874
+      return [activeColor[0][0], activeColor[0][1], activeColor[0][2], opacity];
     },
     getFillColor: (f: any) => {
       const code = f.properties.ADM0_A3;
       const count = countryArticleCounts[code] ?? 0;
       if (count === 0) return [0, 0, 0, 0]; // fully transparent
       const opacity = Math.min(10 + (count)*5, 50);
-      return [244, 216, 116, opacity]; // subtle fill
+      return [activeColor[0][0], activeColor[0][1], activeColor[0][2], opacity];
     },
     getLineWidth: (f: any) => {
       const code = f.properties.ADM0_A3;
@@ -469,7 +479,8 @@ function App() {
       getFillColor: [countryArticleCounts],
       getLineWidth: [countryArticleCounts],
     },
-  }), [countryArticleCounts, maxCountryCount]);
+  })
+}, [countryArticleCounts, maxCountryCount]);
 
   //Deck.gl layers
 
@@ -563,7 +574,7 @@ function App() {
     getTargetPosition: d => d.targetPosition,
     getSourceColor: [0, 216, 116, 255],   // your yellow
     getTargetColor: [0, 68, 68, 255],
-    getWidth: 2,
+    getWidth: 6,
     greatCircle: true,
   }), [arcData]);
 
@@ -586,19 +597,19 @@ function App() {
       data: undefined,
       image: props.data,
       bounds: props.tile.boundingBox.flat() as [number, number, number, number],
-      opacity: 0.5,
+      opacity: radarOpacity,
     }),
-  }) : null, [radarPath]);
+  }) : null, [radarPath, radarOpacity]);
 
   return (
     <div className="bg-[#0d0d0d] overflow-hidden" style={{fontFamily: "Montagu Slab, sans-serif"}}>
       {/* Header - fixed, floats above canvas */}
       <div className="fixed top-[2vh] left-[2vw] w-[96vw] h-[5vh] bg-[#1a1a1a] rounded-lg flex items-center px-6 z-[999] border border-[#F4D874]">
-        <span className="text-white text-3xl tracking-tight">
+        <span className="text-white lg:text-3xl text-lg tracking-tight width-[50%] lg:width-auto">
           What's going on?
         </span>
 
-        <div className="flex gap-2 ml-auto">
+        <div className="flex lg:relative absolute lg:opacity-100 opacity-0 gap-2 ml-auto lg:width-auto lg:overflow-x-visible width-[10%] overflow-x-auto py-1">
           {allCategories.map(category => {
             const active = activeCategories.has(category);
             // grab first color of the range as the accent
@@ -623,15 +634,43 @@ function App() {
         </div>
       </div>
 
+      {/* Mobile categories switcher */}
+      <div className="fixed top-[8vh] left-[2vw] w-[96vw] h-[5vh] bg-[#1a1a1a] rounded-lg flex items-center px-2 z-[999] border border-[#F4D874] lg:hidden">
+        <div className="flex gap-2 lg:width-auto lg:overflow-x-visible mx-0 overflow-x-auto py-1">
+            {allCategories.map(category => {
+              const active = activeCategories.has(category);
+              // grab first color of the range as the accent
+              const [r, g, b] = CATEGORY_COLORS[category]?.[2] ?? [255, 68, 68];
+              return (
+                <button
+                  key={category}
+                  onClick={() => toggleCategory(category)}
+                  className={`px-3 py-1 rounded-full lg:text-xs text-[10px] font-semibold tracking-wide border transition-all duration-200 ${
+                    active ? 'opacity-100' : 'opacity-30'
+                  }`}
+                  style={{
+                    borderColor: `rgb(${r},${g},${b})`,
+                    color: active ? `rgb(${r},${g},${b})` : '#666',
+                    background: active ? `rgba(${r},${g},${b},0.12)` : 'transparent',
+                  }}
+                >
+                  {category}
+                </button>
+              );
+            })}
+          </div>
+      </div>
+
       {/* Map fills entire screen */}
       <DeckGL
         initialViewState={INITIAL_VIEW_STATE}
         controller={true}
-        layers={[countryLayer, ...heatmapLayers, scatterLayer, arcLayer, radarLayer]}
+        layers={[countryLayer, ...heatmapLayers, radarLayer, scatterLayer, arcLayer, ]}
         style={{ width: "98vw", height: "98vh", marginTop: "1vh", marginLeft: "1vw" }}
         onClick={({ object }) => {
           if (!object) setSelectedGroup(null);
         }}
+        onViewStateChange={({ viewState }: any) => setCurrentZoom(viewState.zoom)}
       >
         <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
       </DeckGL>
@@ -639,7 +678,7 @@ function App() {
       {/* Tooltip - fixed to cursor */}
       {hoverInfo && (
         <div
-          className="fixed pointer-events-none z-[1000] bg-[#111] border border-[#2a2a2a] rounded-lg p-3 max-w-[220px]"
+          className="fixed pointer-events-none z-[1000] bg-[#111] border border-[#2a2a2a] rounded-lg p-3 max-w-[220px] lg:opacity-100 opacity-0"
           style={{ left: hoverInfo.x + 14, top: hoverInfo.y + 14 }}
         >
           <div className="text-[#F4D874] text-[14px] tracking-widest uppercase mb-1 font-bold">
@@ -657,11 +696,11 @@ function App() {
 
       {/* Sidebar */}
       {selectedGroup && (
-        <div className="fixed right-[1vw] top-[8vh] h-[86vh] w-[40vw] rounded-lg bg-[#111] border border-[#F4D874] p-6 z-[999] text-white">
+        <div className="fixed right-[1vw] lg:top-[8vh] bottom-[2vh] lg:h-[86vh] h-[40vh] lg:w-[40vw] w-[96vw] rounded-lg bg-[#111] border border-[#F4D874] p-6 z-[999] text-white">
           <h2 className="text-[#F4D874] text-2xl tracking-widest uppercase mb-1 font-bold">
             {selectedGroup.countryFlag} {selectedGroup.city}
           </h2>
-          <div className="overflow-y-auto h-full p-2 border-t border-[#2a2a2a]">
+          <div className="overflow-y-auto h-[90%] p-2 border-t border-[#2a2a2a]">
             {selectedGroup.articles.sort((a, b) => a.pubDate.localeCompare(b.pubDate)).map((article, index) => (
               <div key={index} 
               className="mb-4 p-3 rounded-lg border border-[#2a2a2a] hover:border-[#F4D874] transition-colors"
@@ -724,7 +763,7 @@ function App() {
       )}
 
       {/* Trending topics section */}
-      <div className="fixed left-[2vw] top-[8vh] w-[18vw] rounded-lg bg-[#111] border border-[#F4D874] p-4 z-[999]">
+      <div className="fixed left-[2vw] lg:top-[8vh] top-[14vh] lg:w-[18vw] w-[96vw] rounded-lg bg-[#111] border border-[#F4D874] p-4 z-[999]">
         <div className="text-[#F4D874] text-[10px] tracking-widest uppercase mb-3 font-bold">
           Trending
         </div>
@@ -732,14 +771,14 @@ function App() {
         {loading ? (
           <div className="text-[#444] text-xs">Loading...</div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex lg:flex-col flex-row lg:width-auto overflow-x-auto py-1 gap-2">
             {trendingTopics.map((topic, i) => (
-              <div key={i} className="flex items-start gap-2 group">
+              <div key={i} className="flex lg:items-start gap-2 group lg:w-auto w-[200%]">
                 <span className="text-[#333] text-[10px] font-mono mt-0.5 w-4 flex-shrink-0">
                   {i + 1}
                 </span>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[#eee] text-sm leading-snug capitalize">
+                  <span className="text-[#eee] lg:text-sm text-xs leading-snug capitalize">
                     {topic.phrase}
                   </span>
                   <span className="text-[#444] text-[10px]">
