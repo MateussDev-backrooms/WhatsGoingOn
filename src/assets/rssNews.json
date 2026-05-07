@@ -66,6 +66,36 @@
     "category": "General"
   },
   {
+    "name": "ABC News",
+    "link": "https://abcnews.com/abcnews/topstories",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "ABC News: International",
+    "link": "https://abcnews.com/abcnews/internationalheadlines",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "Africa news",
+    "link": "https://www.africanews.com/feed/rss",
+    "originCountry": "Republic of the Congo",
+    "category": "General"
+  },
+  {
+    "name": "CBS",
+    "link": "https://www.cbsnews.com/latest/rss/main",
+    "originCountry": "United States",
+    "category": "General"
+  },
+  {
+    "name": "CNA",
+    "link": "https://www.channelnewsasia.com/rssfeeds/8395986",
+    "originCountry": "Singapore",
+    "category": "General"
+  },
+  {
     "name": "Bloomberg: Technology",
     "link": "https://feeds.bloomberg.com/technology/news.rss",
     "originCountry": "United States",
