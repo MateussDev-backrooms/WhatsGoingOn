@@ -15,7 +15,7 @@ import type { MapViewState } from "@deck.gl/core";
 import type { FeatureCollection } from "geojson";
 
 //Charts
-import { PieChart, Pie, Cell, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 //Geocoding stuffs
 import nlp from "compromise";
@@ -240,6 +240,26 @@ function getTrendingTopics(articles: any[], topN = 5) {
     }));
 }
 
+//Time stuff
+type TimeRange = "1d" | "3d" | "7d" | "all";
+
+const TIME_RANGE_MS: Record<TimeRange, number> = {
+  "1d": 1 * 24 * 60 * 60 * 1000,
+  "3d": 3 * 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  all: Infinity,
+};
+function articleAgeWeight(pubDateTs: number, rangeMs: number): number {
+  if (rangeMs === Infinity) {
+    // For 'all', decay over 7 days regardless
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    const age = Date.now() - pubDateTs;
+    return Math.max(0.05, 1 - age / sevenDays);
+  }
+  const age = Date.now() - pubDateTs;
+  return Math.max(0.05, 1 - age / rangeMs);
+}
+
 //We pull context clues from local json assets/contextClues.json
 let contextCluesMap = contextClues;
 
@@ -442,41 +462,52 @@ function App() {
   }, []);
 
   // console.log(geomarkedArticles);
+  const [timeRange, setTimeRange] = useState<TimeRange>("3d");
 
   // Group geomarked articles by location
-  const locationGroups = geomarkedArticles
-    .sort((a, b) => b.article.pubDateTs - a.article.pubDateTs)
-    .reduce(
-      (groups, item) => {
-        const key = `${item.lat.toFixed(2)},${item.lng.toFixed(2)}`;
-        if (!groups[key]) {
-          groups[key] = {
-            lat: item.lat,
-            lng: item.lng,
-            articles: [],
-            city: item.city,
-            countryFlag: item.countryFlag,
-          };
-        }
-        groups[key].articles.push({
-          ...item.article,
-          feedProvider: item.feedProvider,
-          providerIcon: item.providerIcon,
-          category: item.category,
-        });
-        return groups;
-      },
-      {} as Record<
-        string,
-        {
-          lat: number;
-          lng: number;
-          articles: any[];
-          city: string;
-          countryFlag?: string;
-        }
-      >,
-    );
+  const locationGroups = useMemo(
+    () =>
+      geomarkedArticles
+        .filter((a) => {
+          const limit = TIME_RANGE_MS[timeRange];
+          return (
+            limit === Infinity || Date.now() - a.article.pubDateTs <= limit
+          );
+        })
+        .sort((a, b) => b.article.pubDateTs - a.article.pubDateTs)
+        .reduce(
+          (groups, item) => {
+            const key = `${item.lat.toFixed(2)},${item.lng.toFixed(2)}`;
+            if (!groups[key]) {
+              groups[key] = {
+                lat: item.lat,
+                lng: item.lng,
+                articles: [],
+                city: item.city,
+                countryFlag: item.countryFlag,
+              };
+            }
+            groups[key].articles.push({
+              ...item.article,
+              feedProvider: item.feedProvider,
+              providerIcon: item.providerIcon,
+              category: item.category,
+            });
+            return groups;
+          },
+          {} as Record<
+            string,
+            {
+              lat: number;
+              lng: number;
+              articles: any[];
+              city: string;
+              countryFlag?: string;
+            }
+          >,
+        ),
+    [geomarkedArticles, timeRange],
+  );
 
   //Group articles by country
 
@@ -517,9 +548,14 @@ function App() {
   );
 
   const trendingTopics = useMemo(() => {
-    const allArticles = geomarkedArticles.map((g) => g.article);
-    return getTrendingTopics(allArticles, 5);
-  }, [geomarkedArticles]);
+    const limit = TIME_RANGE_MS[timeRange];
+    const filteredArticles = geomarkedArticles
+      .filter(
+        (a) => limit === Infinity || Date.now() - a.article.pubDateTs <= limit,
+      )
+      .map((g) => g.article);
+    return getTrendingTopics(filteredArticles, 5);
+  }, [geomarkedArticles, timeRange]);
 
   const toggleCategory = useCallback((category: string) => {
     setActiveCategories((prev) => {
@@ -533,6 +569,23 @@ function App() {
     0.0,
     Math.min(0.75, 0.1 + (currentZoom - 1) * 0.08),
   );
+
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+
+  const topicArticles = useMemo(() => {
+    if (!selectedTopic) return [];
+    const limit = TIME_RANGE_MS[timeRange];
+    return geomarkedArticles
+      .filter((a) => {
+        const withinTime =
+          limit === Infinity || Date.now() - a.article.pubDateTs <= limit;
+        const mentionsTopic = a.article.title
+          .toLowerCase()
+          .includes(selectedTopic.toLowerCase());
+        return withinTime && mentionsTopic;
+      })
+      .sort((a, b) => b.article.pubDateTs - a.article.pubDateTs);
+  }, [selectedTopic, geomarkedArticles, timeRange]);
 
   const countryArticleCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -632,10 +685,14 @@ function App() {
           ),
           getPosition: (d) => [d.lat, d.lng],
           getWeight: (d) => {
-            const count = d.articles.filter((a: any) =>
-              activeCategories.has(a.category),
-            ).length;
-            return Math.log1p(count) + 1;
+            const totalWeight = d.articles
+              .filter((a: any) => activeCategories.has(a.category))
+              .reduce(
+                (sum: number, a: any) =>
+                  sum + articleAgeWeight(a.pubDateTs, TIME_RANGE_MS[timeRange]),
+                0,
+              );
+            return Math.log1p(totalWeight) + 1;
           },
           radiusPixels: 90,
           intensity: 1.5,
@@ -656,11 +713,15 @@ function App() {
             m.articles.some((a: any) => a.category === category),
           ),
           getPosition: (d) => [d.lat, d.lng],
-          getWeight: (d: any) => {
-            const count = d.articles.filter(
-              (a: any) => a.category === category,
-            ).length;
-            return Math.log1p(count);
+          getWeight: (d) => {
+            const totalWeight = d.articles
+              .filter((a: any) => activeCategories.has(a.category))
+              .reduce(
+                (sum: number, a: any) =>
+                  sum + articleAgeWeight(a.pubDateTs, TIME_RANGE_MS[timeRange]),
+                0,
+              );
+            return Math.log1p(totalWeight) + 1;
           },
           radiusPixels: 90,
           intensity: 1.5,
@@ -749,10 +810,26 @@ function App() {
       style={{ fontFamily: "Montagu Slab, sans-serif" }}
     >
       {/* Header - fixed, floats above canvas */}
-      <div className="fixed top-[2vh] left-[2vw] w-[96vw] h-[5vh] bg-[#1a1a1a] rounded-lg flex items-center px-6 z-[999] border border-[#F4D874] shadow-lg">
+      <div className="fixed top-[2vh] left-[2vw] w-[96vw] h-[5vh] bg-[#1a1a1a] rounded-lg cursor-default flex items-center px-6 z-[999] border border-[#F4D874] shadow-lg">
         <span className="text-white lg:text-3xl text-lg tracking-tight width-[50%] lg:width-auto">
           What's going on?
         </span>
+
+        <div className="hidden lg:flex items-center gap-1 mx-4 bg-[#0d0d0d] rounded-lg p-1 border border-[#2a2a2a]">
+          {(["1d", "3d", "7d", "all"] as TimeRange[]).map((range) => (
+            <button
+              key={range}
+              onClick={() => setTimeRange(range)}
+              className={`px-3 py-1 rounded-md text-xs font-semibold tracking-widest uppercase transition-all duration-200 ${
+                timeRange === range
+                  ? "bg-[#F4D874] text-[#0d0d0d]"
+                  : "text-[#555] hover:text-[#aaa]"
+              }`}
+            >
+              {range}
+            </button>
+          ))}
+        </div>
 
         <div className="flex lg:relative absolute lg:opacity-100 opacity-0 gap-2 ml-auto lg:width-auto lg:overflow-x-visible width-[10%] overflow-x-auto py-1">
           {allCategories.map((category) => {
@@ -763,7 +840,7 @@ function App() {
               <button
                 key={category}
                 onClick={() => toggleCategory(category)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide border transition-all duration-200 ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide border transition-all duration-200 cursor-pointer ${
                   active ? "opacity-100" : "opacity-30"
                 }`}
                 style={{
@@ -783,7 +860,7 @@ function App() {
 
       {/* Mobile categories switcher */}
       <div className="fixed top-[8vh] left-[2vw] w-[96vw] h-[5vh] bg-[#1a1a1a] rounded-lg flex items-center px-2 z-[999] border border-[#F4D874] lg:hidden shadow-lg">
-        <div className="flex gap-2 lg:width-auto lg:overflow-x-visible mx-0 overflow-x-auto py-1">
+        <div className="flex gap-2 lg:width-auto lg:overflow-x-visible mx-0 overflow-x-auto no-scrollbar py-1">
           {allCategories.map((category) => {
             const active = activeCategories.has(category);
             // grab first color of the range as the accent
@@ -792,7 +869,7 @@ function App() {
               <button
                 key={category}
                 onClick={() => toggleCategory(category)}
-                className={`px-3 py-1 rounded-full lg:text-xs text-[10px] font-semibold tracking-wide border transition-all duration-200 ${
+                className={`lg:px-3 lg:py-1 px-[6px] py-[4px] rounded-full lg:text-xs text-[10px] font-semibold tracking-wide border transition-all duration-200 ${
                   active ? "opacity-100" : "opacity-30"
                 }`}
                 style={{
@@ -811,26 +888,28 @@ function App() {
       </div>
 
       {/* Map fills entire screen */}
-      <DeckGL
-        initialViewState={INITIAL_VIEW_STATE}
-        controller={true}
-        layers={[
-          countryLayer,
-          ...heatmapLayers,
-          radarLayer,
-          scatterLayer,
-          arcLayer,
-        ]}
-        style={{ width: "100vw", height: "100vh" }}
-        onClick={({ object }) => {
-          if (!object) setSelectedGroup(null);
-        }}
-        onViewStateChange={({ viewState }: any) =>
-          setCurrentZoom(viewState.zoom)
-        }
-      >
-        <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
-      </DeckGL>
+      <div className="w-screen h-screen overflow-clip">
+        <DeckGL
+          initialViewState={INITIAL_VIEW_STATE}
+          controller={true}
+          layers={[
+            countryLayer,
+            ...heatmapLayers,
+            radarLayer,
+            scatterLayer,
+            arcLayer,
+          ]}
+          style={{ width: "100vw", height: "100vh" }}
+          onClick={({ object }) => {
+            if (!object) setSelectedGroup(null);
+          }}
+          onViewStateChange={({ viewState }: any) =>
+            setCurrentZoom(viewState.zoom)
+          }
+        >
+          <Map mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" />
+        </DeckGL>
+      </div>
 
       {/* Loading overlay */}
       {loading && (
@@ -874,8 +953,8 @@ function App() {
       {hoverInfo && (
         <div
           className="fixed pointer-events-none z-[1000] bg-[#111] border border-[#2a2a2a] rounded-lg p-3 max-w-[220px] lg:opacity-100 opacity-0 shadow-md"
-          style={{ 
-            left: hoverInfo.x + 14, 
+          style={{
+            left: hoverInfo.x + 14,
             top: hoverInfo.y + 14,
           }}
         >
@@ -894,77 +973,64 @@ function App() {
 
       {/* Sidebar */}
       {selectedGroup && (
-        <div
-          className="fixed right-[2vw] lg:top-[8vh] bottom-[2vh] lg:h-[86vh] h-[60vh] lg:w-[40vw] w-[96vw] rounded-lg bg-[#111] border border-[#F4D874] p-4 z-[999] text-white shadow-lg"
-        >
+        <div className="fixed right-[2vw] lg:top-[8vh] bottom-[2vh] lg:h-[86vh] h-[60vh] lg:w-[40vw] w-[96vw] rounded-lg bg-[#111] border border-[#F4D874] p-4 z-[999] text-white shadow-lg">
           <div className="flex flex-row justify-between">
-            <h2 className="text-[#F4D874] text-2xl tracking-widest uppercase mb-1 font-bold">
+            <h2 className="text-[#F4D874] lg:text-2xl text-md tracking-widest uppercase mb-1 font-bold">
               {selectedGroup.countryFlag} {selectedGroup.city}
             </h2>
             <button
-              className="text-[#F4D874] p-1 m-1 rounded-full mono"
-              onClick={() => {
-                setSelectedGroup(null);
-              }}
+              onClick={() => setSelectedGroup(null)}
+              className="text-[#555] hover:text-white border border-[#2a2a2a] hover:border-[#444] rounded-lg px-3 py-1.5 my-1 text-xs transition-colors ml-4 flex-shrink-0"
             >
-              X
+              ✕ Close
             </button>
           </div>
           <div className="overflow-y-auto lg:h-[70%] h-[50%] py-2 border-t border-[#2a2a2a]">
             {selectedGroup.articles
               .sort((a, b) => b.pubDateTs - a.pubDateTs)
-              .map((article, index) => (
-                <div
-                  key={index}
-                  className="mb-2 p-2 rounded-lg border border-[#2a2a2a] border-l-5 hover:border-[#F4D874] transition-colors"
-                  onMouseEnter={() => {
-                    const providerCoords = getCountryCapitalCoords(
-                      article.feedProvider?.originCountry ?? "",
-                    );
-                    if (providerCoords && selectedGroup) {
-                      setArcData({
-                        sourcePosition: providerCoords,
-                        targetPosition: [selectedGroup.lat, selectedGroup.lng],
-                      });
-                    }
-                  }}
-                  onMouseLeave={() => setArcData(null)}
-                >
-                  <div className="flex flex-row items-start gap-2">
-                    {article.providerIcon && (
-                      <img
-                        src={article.providerIcon}
-                        alt="Provider Icon"
-                        className="w-5 h-5 mt-1 rounded-sm flex-shrink-0"
-                      />
-                    )}
-                    <div className="flex flex-col gap-1">
-                      <div className="text-[11px] text-[#666] flex flex-row items-center gap-1">
+              .map((article, index) => {
+                const [r, g, b] = (CATEGORY_COLORS[
+                    article.category ?? ""
+                  ]?.[2] ?? [255, 68, 68]) as [number, number, number, number?];
+                return (
+                  <div
+                    key={index}
+                    className="block bg-[#1a1a1a] border border-[#222] hover:border-[#F4D874] rounded-lg p-3 no-underline transition-colors group my-3"
+                    onMouseEnter={() => {
+                      const providerCoords = getCountryCapitalCoords(
+                        article.feedProvider?.originCountry ?? "",
+                      );
+                      if (providerCoords && selectedGroup) {
+                        setArcData({
+                          sourcePosition: providerCoords,
+                          targetPosition: [selectedGroup.lat, selectedGroup.lng],
+                        });
+                      }
+                    }}
+                    onMouseLeave={() => setArcData(null)}
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
+                      {article.providerIcon && (
+                        <img
+                          src={article.providerIcon}
+                          className="w-4 h-4 rounded-sm flex-shrink-0"
+                        />
+                      )}
+                      <span className="text-[#555] text-[10px]">
                         {article.feedProvider?.name ?? "Unknown"},{" "}
                         {article.feedProvider?.originCountry ?? ""}
-                        {(() => {
-                          const [r, g, b] = (CATEGORY_COLORS[
-                            article.category
-                          ]?.[2] ?? [255, 68, 68]) as [
-                            number,
-                            number,
-                            number,
-                            number?,
-                          ];
-                          return (
-                            <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
-                              style={{
-                                borderColor: `rgb(${r},${g},${b})`,
-                                color: `rgb(${r},${g},${b})`,
-                                background: `rgba(${r},${g},${b},0.12)`,
-                              }}
-                            >
-                              {article.category}
-                            </span>
-                          );
-                        })()}
-                      </div>
+                      </span>
+                      <span
+                        className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ml-auto flex-shrink-0"
+                        style={{
+                          borderColor: `rgb(${r},${g},${b})`,
+                          color: `rgb(${r},${g},${b})`,
+                          background: `rgba(${r},${g},${b},0.12)`,
+                        }}
+                      >
+                        {article.category}
+                      </span>
+                    </div>
                       <a
                         href={article.link}
                         target="_blank"
@@ -973,18 +1039,22 @@ function App() {
                       >
                         {article.title}
                       </a>
-                      <p className="text-[10px] text-[#444]">
-                        {formatDate(article.pubDateTs)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[#444] text-[10px]">
+                          {selectedGroup.countryFlag} {selectedGroup.city}
+                        </span>
+                        <span className="text-[#444] text-[10px]">
+                          {formatDate(article.pubDateTs)}
+                        </span>
+                      </div>
+                  </div>)
+              })}
           </div>
+          
 
           {/* Pie chart section */}
           <div className="border-t border-[#2a2a2a] mt-4 pt-4">
-            <div className="text-[#F4D874] text-lg font-bold tracking-widest uppercase mb-2">
+            <div className="text-[#F4D874] lg:text-lg text-sm font-bold tracking-widest uppercase mb-2">
               Coverage:
             </div>
             {(() => {
@@ -1010,57 +1080,77 @@ function App() {
 
               return (
                 <>
-                  <div className="flex flex-row w-[100%] items-center justify-around">
-                    <div className="flex justify-center">
-                      <PieChart width={200} height={160}>
-                        <Pie
-                          data={chartData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={70}
-                          fill="#F4D874"
-                          stroke="#2a2a2a"
-                          labelLine={false}
-                        >
-                          {chartData.map((entry, index) => (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={
-                                [
-                                  "#F4D874",
-                                  "#ff8c42",
-                                  "#ff3b3b",
-                                  "#4c9aff",
-                                  "#6b4cff",
-                                  "#888",
-                                ][index % 6]
-                              }
-                            />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value) =>
-                            `${value} article${value !== 1 ? "s" : ""}`
-                          }
-                        />
-                      </PieChart>
-                    </div>
-                    <div className="flex flex-col w-full gap-2 justify-center lg:text-[12px] text-[9px] mt-2">
-                      {top5.map(([name, count]) => (
-                        <span
-                          key={name}
-                          className="bg-[#1a1a1a] px-2 py-0.5 rounded-full"
-                        >
-                          {name} ({count})
-                        </span>
-                      ))}
-                      {othersCount > 0 && (
-                        <span className="bg-[#1a1a1a] px-2 py-0.5 rounded-full">
-                          others ({othersCount})
-                        </span>
-                      )}
+                  <div className="overflow-hidden">
+                    <div className="flex flex-row w-full h-full items-center">
+                      <div className="flex justify-center w-full">
+                        {/* Responsive pie chart */}
+                        <div className="w-[30%]">
+                          <ResponsiveContainer
+                            width="100%"
+                            aspect={1}
+                            minWidth={64}
+                          >
+                            <PieChart
+                              margin={{
+                                top: 20,
+                                right: 0,
+                                left: 0,
+                                bottom: 0,
+                              }}
+                            >
+                              <Pie
+                                data={chartData}
+                                dataKey="value"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius="100%"
+                                fill="#F4D874"
+                                stroke="#2a2a2a"
+                                labelLine={false}
+                              >
+                                {chartData.map((_entry, index) => (
+                                  <Cell
+                                    key={`cell-${index}`}
+                                    fill={
+                                      [
+                                        "#F4D874",
+                                        "#ff8c42",
+                                        "#ff3b3b",
+                                        "#4c9aff",
+                                        "#6b4cff",
+                                        "#888",
+                                      ][index % 6]
+                                    }
+                                  />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                formatter={(value) =>
+                                  `${value} article${value !== 1 ? "s" : ""}`
+                                }
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="w-full h-fit overflow-y-auto">
+                          <div className="flex flex-col gap-2 justify-center lg:text-[12px] text-[9px]">
+                            {top5.map(([name, count]) => (
+                              <span
+                                key={name}
+                                className="bg-[#1a1a1a] px-2 py-0.5 rounded-full"
+                              >
+                                {name} ({count})
+                              </span>
+                            ))}
+                            {othersCount > 0 && (
+                              <span className="bg-[#1a1a1a] px-2 py-0.5 rounded-full">
+                                others ({othersCount})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -1079,17 +1169,18 @@ function App() {
         {loading ? (
           <div className="text-[#444] text-xs">Loading...</div>
         ) : (
-          <div className="flex lg:flex-col flex-row lg:width-auto overflow-x-auto py-1 gap-2">
+          <div className="flex lg:flex-col flex-row lg:width-auto overflow-x-auto py-1 gap-2 cursor-default no-scrollbar ">
             {trendingTopics.map((topic, i) => (
               <div
                 key={i}
-                className="flex lg:items-start gap-2 group lg:w-auto w-[200%]"
+                className="flex lg:items-start gap-2 group lg:w-auto w-[200%] hover:font-bold cursor-pointer"
+                onClick={() => setSelectedTopic(topic.phrase)}
               >
                 <span className="text-[#333] text-[10px] font-mono mt-0.5 w-4 flex-shrink-0">
                   {i + 1}
                 </span>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[#eee] lg:text-sm text-xs leading-snug capitalize">
+                  <span className="text-[#eee] hover:text-[#F4D874] transition-colors lg:text-sm text-xs leading-snug capitalize">
                     {topic.phrase}
                   </span>
                   <span className="text-[#444] text-[10px]">
@@ -1105,12 +1196,216 @@ function App() {
       {/* Footer information */}
       <div className="fixed bottom-2 right-2 w-[20vw] h-[5vh] flex items-center justify-center px-6 z-[999] text-right">
         <span className="text-[#aaa] text-[8px] tracking-wide">
-          Deck.gl, React, Compromise NLP, MapLibre, OpenStreetMaps, RainViewer, Recharted, Tailwind CSS
+          Deck.gl, React, Compromise NLP, MapLibre, OpenStreetMaps, RainViewer,
+          Recharted, Tailwind CSS
           <br />
           <br />
           Made by MateussDev - 2026
         </span>
       </div>
+
+      {/* Trending topic articles */}
+      {selectedTopic && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedTopic(null)}
+          />
+
+          {/* Modal */}
+          <div className="relative z-10 bg-[#111] border border-[#F4D874] rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-start justify-between p-5 border-b border-[#2a2a2a]">
+              <div>
+                <div className="text-[#F4D874] text-[10px] tracking-widest uppercase mb-1">
+                  Trending topic
+                </div>
+                <h2 className="text-white text-xl font-bold capitalize">
+                  {selectedTopic}
+                </h2>
+                <div className="text-[#555] text-[11px] mt-1">
+                  {topicArticles.length} article
+                  {topicArticles.length !== 1 ? "s" : ""} -{" "}
+                  {timeRange === "all" ? "all time" : `last ${timeRange}`}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTopic(null)}
+                className="text-[#555] hover:text-white border border-[#2a2a2a] hover:border-[#444] rounded-lg px-3 py-1.5 text-xs transition-colors ml-4 flex-shrink-0"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Article list */}
+            <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-3">
+              {topicArticles.length === 0 ? (
+                <div className="text-[#444] text-sm text-center py-8">
+                  No articles found for this topic in the selected time range.
+                </div>
+              ) : (
+                topicArticles.map((item, i) => {
+                  const [r, g, b] = (CATEGORY_COLORS[
+                    item.category ?? ""
+                  ]?.[2] ?? [255, 68, 68]) as [number, number, number, number?];
+                  return (
+                    <a
+                      key={i}
+                      href={item.article.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block bg-[#1a1a1a] border border-[#222] hover:border-[#F4D874] rounded-lg p-3 no-underline transition-colors group"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        {item.providerIcon && (
+                          <img
+                            src={item.providerIcon}
+                            className="w-4 h-4 rounded-sm flex-shrink-0"
+                          />
+                        )}
+                        <span className="text-[#555] text-[10px]">
+                          {item.feedProvider?.name ?? "Unknown"},{" "}
+                          {item.feedProvider?.originCountry ?? ""}
+                        </span>
+                        <span
+                          className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ml-auto flex-shrink-0"
+                          style={{
+                            borderColor: `rgb(${r},${g},${b})`,
+                            color: `rgb(${r},${g},${b})`,
+                            background: `rgba(${r},${g},${b},0.12)`,
+                          }}
+                        >
+                          {item.category}
+                        </span>
+                      </div>
+
+                      <div className="text-[#eee] text-sm leading-snug group-hover:text-[#F4D874] transition-colors mb-1">
+                        {item.article.title}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[#444] text-[10px]">
+                          {item.countryFlag} {item.city}
+                        </span>
+                        <span className="text-[#444] text-[10px]">
+                          {formatDate(item.article.pubDateTs)}
+                        </span>
+                      </div>
+                    </a>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Pie chart section */}
+            <div className="border-t border-[#2a2a2a] m-4 pt-4 text-white">
+              <div className="text-[#F4D874] lg:text-lg text-sm font-bold tracking-widest uppercase mb-2">
+                Coverage:
+              </div>
+              {(() => {
+                const providerCounts: Record<string, number> = {};
+                for (const art of topicArticles) {
+                  const providerName = art.feedProvider?.name || "Unknown";
+                  providerCounts[providerName] =
+                    (providerCounts[providerName] || 0) + 1;
+                }
+                const sorted = Object.entries(providerCounts).sort(
+                  (a, b) => b[1] - a[1],
+                );
+                const top5 = sorted.slice(0, 5);
+                const othersCount = sorted
+                  .slice(5)
+                  .reduce((sum, [, c]) => sum + c, 0);
+                const chartData = top5.map(([name, count]) => ({
+                  name,
+                  value: count,
+                }));
+                if (othersCount > 0)
+                  chartData.push({ name: "...", value: othersCount });
+
+                return (
+                  <>
+                    <div className="overflow-hidden">
+                      <div className="flex flex-row w-full h-full items-center">
+                        <div className="flex justify-center w-full">
+                          {/* Responsive pie chart */}
+                          <div className="w-[30%]">
+                            <ResponsiveContainer
+                              width="100%"
+                              aspect={1}
+                              minWidth={64}
+                            >
+                              <PieChart
+                                margin={{
+                                  top: 20,
+                                  right: 0,
+                                  left: 0,
+                                  bottom: 0,
+                                }}
+                              >
+                                <Pie
+                                  data={chartData}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius="100%"
+                                  fill="#F4D874"
+                                  stroke="#2a2a2a"
+                                  labelLine={false}
+                                >
+                                  {chartData.map((_entry, index) => (
+                                    <Cell
+                                      key={`cell-${index}`}
+                                      fill={
+                                        [
+                                          "#F4D874",
+                                          "#ff8c42",
+                                          "#ff3b3b",
+                                          "#4c9aff",
+                                          "#6b4cff",
+                                          "#888",
+                                        ][index % 6]
+                                      }
+                                    />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  formatter={(value) =>
+                                    `${value} article${value !== 1 ? "s" : ""}`
+                                  }
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="w-full h-fit overflow-y-auto">
+                            <div className="flex flex-col gap-2 justify-center lg:text-[12px] text-[9px]">
+                              {top5.map(([name, count]) => (
+                                <span
+                                  key={name}
+                                  className="bg-[#1a1a1a] px-2 py-0.5 rounded-full"
+                                >
+                                  {name} ({count})
+                                </span>
+                              ))}
+                              {othersCount > 0 && (
+                                <span className="bg-[#1a1a1a] px-2 py-0.5 rounded-full">
+                                  others ({othersCount})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
